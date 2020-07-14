@@ -40,20 +40,24 @@ impl<D> Node<D> {
     }
 }
 
-pub struct Edge;
-
-pub struct ForceGraph<D> {
-    graph: StableUnGraph<Node<D>, Edge>,
+/// W for edge weight. If you don't need any data on your
+/// links use the empty tuple for W: ().
+pub struct Edge<W> {
+    pub weight: W,
 }
 
-impl<D> ForceGraph<D> {
+pub struct ForceGraph<D, W> {
+    graph: StableUnGraph<Node<D>, Edge<W>>,
+}
+
+impl<D, W> ForceGraph<D, W> {
     pub fn new() -> Self {
         ForceGraph {
             graph: StableUnGraph::default(),
         }
     }
 
-    pub fn get_graph(&self) -> &StableUnGraph<Node<D>, Edge> {
+    pub fn get_graph(&self) -> &StableUnGraph<Node<D>, Edge<W>> {
         &self.graph
     }
 
@@ -82,8 +86,8 @@ impl<D> ForceGraph<D> {
         self.graph.remove_node(idx);
     }
 
-    pub fn add_edge(&mut self, n1_idx: DefaultNodeIdx, n2_idx: DefaultNodeIdx) {
-        self.graph.update_edge(n1_idx, n2_idx, Edge);
+    pub fn add_edge(&mut self, n1_idx: DefaultNodeIdx, n2_idx: DefaultNodeIdx, edge: Edge<W>) {
+        self.graph.update_edge(n1_idx, n2_idx, edge);
     }
 
     pub fn clear(&mut self) {
@@ -136,11 +140,12 @@ impl<D> ForceGraph<D> {
         }
     }
 
-    pub fn visit_edges<F: FnMut(&Node<D>, &Node<D>)>(&self, mut cb: F) {
+    pub fn visit_edges<F: FnMut(&Node<D>, &Node<D>, &Edge<W>)>(&self, mut cb: F) {
         for edge_ref in self.graph.edge_references() {
             let source = &self.graph[edge_ref.source()];
             let target = &self.graph[edge_ref.target()];
-            cb(source, target);
+            let weight = edge_ref.weight();
+            cb(source, target, weight);
         }
     }
 }
