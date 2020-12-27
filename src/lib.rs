@@ -41,9 +41,15 @@ impl<D> Node<D> {
 }
 
 /// W for edge weight. If you don't need any data on your
-/// links use the empty tuple for W: ().
+/// links construct the edge using `Default::default()`.
 pub struct Edge<W> {
     pub weight: W,
+}
+
+impl Default for Edge<()> {
+    fn default() -> Self {
+        Edge { weight: () }
+    }
 }
 
 pub struct ForceGraph<D, W> {
@@ -182,4 +188,17 @@ fn repel_nodes<D>(n1: &Node<D>, n2: &Node<D>) -> (f32, f32) {
 
     let strength = -FORCE_CHARGE * ((n1.mass * n2.mass) / (distance * distance));
     (dx * strength, dy * strength)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_default() {
+        let mut graph = ForceGraph::new();
+        let n1_idx = graph.add_node(0.1, 0.2, (), 1.0, false);
+        let n2_idx = graph.add_node(0.3, 0.4, (), 1.0, false);
+        graph.add_edge(n1_idx, n2_idx, Default::default());
+    }
 }
