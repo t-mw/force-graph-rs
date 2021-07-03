@@ -45,6 +45,13 @@ async fn main() {
     let mut dragging_node_idx = None;
     loop {
         clear_background(BLACK);
+        draw_text(
+            "Drag nodes with the left mouse button",
+            50.0,
+            50.0,
+            25.0,
+            WHITE,
+        );
 
         // draw edges
         graph.visit_edges(|node1, node2, _edge| {
