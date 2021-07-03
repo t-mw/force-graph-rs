@@ -352,8 +352,8 @@ fn repel_nodes<D>(n1: &Node<D>, n2: &Node<D>, parameters: &SimulationParameters)
     dx /= distance;
     dy /= distance;
 
-    let strength =
-        -parameters.force_charge * ((n1.data.mass * n2.data.mass) / (distance * distance));
+    let distance_sqrd = distance * distance;
+    let strength = -parameters.force_charge * ((n1.data.mass * n2.data.mass) / distance_sqrd);
     (dx * strength, dy * strength)
 }
 
