@@ -1,6 +1,6 @@
 [package]
 name = "force_graph"
-version = "0.2.0"
+version = "0.3.0"
 description = "Force-directed graph algorithm"
 authors = ["Tobias Mansfield-Williams <contact@tmwhere.com>"]
 repository = "https://github.com/t-mw/force-graph-rs"
