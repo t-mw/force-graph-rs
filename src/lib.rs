@@ -12,7 +12,7 @@ const FORCE_MAX: f32 = 280.0;
 const NODE_SPEED: f32 = 7000.0;
 const DAMPING_FACTOR: f32 = 0.95;
 
-pub struct Node<D> {
+pub struct Node<NodeData> {
     pub x: f32,
     pub y: f32,
     vx: f32,
@@ -21,10 +21,10 @@ pub struct Node<D> {
     ay: f32,
     mass: f32,
     is_anchor: bool,
-    pub data: D,
+    pub data: NodeData,
 }
 
-impl<D> Node<D> {
+impl<NodeData> Node<NodeData> {
     fn apply_force(&mut self, fx: f32, fy: f32, dt: f32) {
         self.ax += fx.max(-FORCE_MAX).min(FORCE_MAX) * dt;
         self.ay += fy.max(-FORCE_MAX).min(FORCE_MAX) * dt;
@@ -40,30 +40,30 @@ impl<D> Node<D> {
     }
 }
 
-/// W for edge weight. If you don't need any data on your
+/// Stores data associated with an edge. If you don't need to associate data with edge
 /// links construct the edge using `Default::default()`.
-pub struct Edge<W> {
-    pub weight: W,
+pub struct Edge<EdgeData> {
+    pub data: EdgeData,
 }
 
 impl Default for Edge<()> {
     fn default() -> Self {
-        Edge { weight: () }
+        Edge { data: () }
     }
 }
 
-pub struct ForceGraph<D, W> {
-    graph: StableUnGraph<Node<D>, Edge<W>>,
+pub struct ForceGraph<NodeData, EdgeData> {
+    graph: StableUnGraph<Node<NodeData>, Edge<EdgeData>>,
 }
 
-impl<D, W> ForceGraph<D, W> {
+impl<NodeData, EdgeData> ForceGraph<NodeData, EdgeData> {
     pub fn new() -> Self {
         ForceGraph {
             graph: StableUnGraph::default(),
         }
     }
 
-    pub fn get_graph(&self) -> &StableUnGraph<Node<D>, Edge<W>> {
+    pub fn get_graph(&self) -> &StableUnGraph<Node<NodeData>, Edge<EdgeData>> {
         &self.graph
     }
 
@@ -71,7 +71,7 @@ impl<D, W> ForceGraph<D, W> {
         &mut self,
         x: f32,
         y: f32,
-        data: D,
+        data: NodeData,
         mass: f32,
         is_anchor: bool,
     ) -> DefaultNodeIdx {
@@ -92,7 +92,12 @@ impl<D, W> ForceGraph<D, W> {
         self.graph.remove_node(idx);
     }
 
-    pub fn add_edge(&mut self, n1_idx: DefaultNodeIdx, n2_idx: DefaultNodeIdx, edge: Edge<W>) {
+    pub fn add_edge(
+        &mut self,
+        n1_idx: DefaultNodeIdx,
+        n2_idx: DefaultNodeIdx,
+        edge: Edge<EdgeData>,
+    ) {
         self.graph.update_edge(n1_idx, n2_idx, edge);
     }
 
@@ -140,13 +145,16 @@ impl<D, W> ForceGraph<D, W> {
         }
     }
 
-    pub fn visit_nodes<F: FnMut(&Node<D>)>(&self, mut cb: F) {
+    pub fn visit_nodes<F: FnMut(&Node<NodeData>)>(&self, mut cb: F) {
         for n_idx in self.graph.node_indices() {
             cb(&self.graph[n_idx]);
         }
     }
 
-    pub fn visit_edges<F: FnMut(&Node<D>, &Node<D>, &Edge<W>)>(&self, mut cb: F) {
+    pub fn visit_edges<F: FnMut(&Node<NodeData>, &Node<NodeData>, &Edge<EdgeData>)>(
+        &self,
+        mut cb: F,
+    ) {
         for edge_ref in self.graph.edge_references() {
             let source = &self.graph[edge_ref.source()];
             let target = &self.graph[edge_ref.target()];
