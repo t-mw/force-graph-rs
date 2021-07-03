@@ -42,7 +42,7 @@
 //! graph.add_edge(n3_idx, n5_idx, Default::default());
 //! graph.add_edge(n4_idx, n5_idx, Default::default());
 //!
-//! // --- your event loop would start here ---
+//! // --- your game loop would start here ---
 //!
 //! // draw edges with your own drawing function
 //! fn draw_edge(x1: f32, y1: f32, x2: f32, y2: f32) {}
@@ -62,7 +62,7 @@
 //! let dt = 0.1;
 //! graph.update(dt);
 //!
-//! // --- your event loop would repeat here ---
+//! // --- your game loop would repeat here ---
 //!
 //! ```
 
