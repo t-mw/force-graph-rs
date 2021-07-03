@@ -281,9 +281,9 @@ impl<UserNodeData, UserEdgeData> ForceGraph<UserNodeData, UserEdgeData> {
     }
 }
 
-/// Stores the [NodeData] provided by the user and the index that references the node in the [ForceGraph].
-/// Can not be constructed by the user.
+/// References a node in the [ForceGraph]. Can not be constructed by the user.
 pub struct Node<UserNodeData = ()> {
+    /// The node data provided by the user.
     pub data: NodeData<UserNodeData>,
     index: DefaultNodeIdx,
     vx: f32,
@@ -303,6 +303,7 @@ impl<UserNodeData> Node<UserNodeData> {
         self.data.y
     }
 
+    /// The index used to reference the node in the [ForceGraph].
     pub fn index(&self) -> DefaultNodeIdx {
         self.index
     }
