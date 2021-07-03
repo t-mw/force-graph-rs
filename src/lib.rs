@@ -149,7 +149,7 @@ where
 
 /// The main force graph structure.
 pub struct ForceGraph<UserNodeData = (), UserEdgeData = ()> {
-    parameters: SimulationParameters,
+    pub parameters: SimulationParameters,
     graph: StableUnGraph<Node<UserNodeData>, EdgeData<UserEdgeData>>,
 }
 
