@@ -6,7 +6,7 @@
 //! use force_graph::{ForceGraph, Node, NodeData};
 //!
 //! // create a force graph with default parameters
-//! let mut graph = <ForceGraph>::new();
+//! let mut graph = <ForceGraph>::new(Default::default());
 //!
 //! // create nodes
 //! let n1_idx = graph.add_node(NodeData {
@@ -73,12 +73,27 @@ use petgraph::{
 
 pub type DefaultNodeIdx = NodeIndex<petgraph::stable_graph::DefaultIx>;
 
-const FORCE_CHARGE: f32 = 12000.0;
-const FORCE_SPRING: f32 = 0.3;
+/// Parameters to control the simulation of the force graph.
+#[derive(Clone, Debug)]
+pub struct SimulationParameters {
+    pub force_charge: f32,
+    pub force_spring: f32,
+    pub force_max: f32,
+    pub node_speed: f32,
+    pub damping_factor: f32,
+}
 
-const FORCE_MAX: f32 = 280.0;
-const NODE_SPEED: f32 = 7000.0;
-const DAMPING_FACTOR: f32 = 0.95;
+impl Default for SimulationParameters {
+    fn default() -> Self {
+        SimulationParameters {
+            force_charge: 12000.0,
+            force_spring: 0.3,
+            force_max: 280.0,
+            node_speed: 7000.0,
+            damping_factor: 0.95,
+        }
+    }
+}
 
 /// Stores data associated with a node that can be modified by the user.
 pub struct NodeData<UserNodeData = ()> {
@@ -134,6 +149,7 @@ where
 
 /// The main force graph structure.
 pub struct ForceGraph<UserNodeData = (), UserEdgeData = ()> {
+    parameters: SimulationParameters,
     graph: StableUnGraph<Node<UserNodeData>, EdgeData<UserEdgeData>>,
 }
 
@@ -143,10 +159,11 @@ impl<UserNodeData, UserEdgeData> ForceGraph<UserNodeData, UserEdgeData> {
     /// Use the following syntax to create a graph with default parameters:
     /// ```
     /// use force_graph::ForceGraph;
-    /// let graph = <ForceGraph>::new();
+    /// let graph = <ForceGraph>::new(Default::default());
     /// ```
-    pub fn new() -> Self {
+    pub fn new(parameters: SimulationParameters) -> Self {
         ForceGraph {
+            parameters,
             graph: StableUnGraph::default(),
         }
     }
@@ -210,8 +227,8 @@ impl<UserNodeData, UserEdgeData> ForceGraph<UserNodeData, UserEdgeData> {
         while let Some(n1) = bfs.next(&self.graph) {
             let mut edges = self.graph.neighbors(n1).detach();
             while let Some(n2) = edges.next_node(&self.graph) {
-                let f = attract_nodes(&self.graph[n1], &self.graph[n2]);
-                self.graph[n1].apply_force(f.0, f.1, dt);
+                let f = attract_nodes(&self.graph[n1], &self.graph[n2], &self.parameters);
+                self.graph[n1].apply_force(f.0, f.1, dt, &self.parameters);
             }
         }
 
@@ -226,11 +243,11 @@ impl<UserNodeData, UserEdgeData> ForceGraph<UserNodeData, UserEdgeData> {
             bfs2.next(&self.graph);
 
             while let Some(n2) = bfs2.next(&self.graph) {
-                let f = repel_nodes(&self.graph[n1], &self.graph[n2]);
-                self.graph[n1].apply_force(f.0, f.1, dt);
+                let f = repel_nodes(&self.graph[n1], &self.graph[n2], &self.parameters);
+                self.graph[n1].apply_force(f.0, f.1, dt, &self.parameters);
             }
 
-            self.graph[n1].update(dt);
+            self.graph[n1].update(dt, &self.parameters);
         }
     }
 
@@ -290,14 +307,14 @@ impl<UserNodeData> Node<UserNodeData> {
         self.index
     }
 
-    fn apply_force(&mut self, fx: f32, fy: f32, dt: f32) {
-        self.ax += fx.max(-FORCE_MAX).min(FORCE_MAX) * dt;
-        self.ay += fy.max(-FORCE_MAX).min(FORCE_MAX) * dt;
+    fn apply_force(&mut self, fx: f32, fy: f32, dt: f32, parameters: &SimulationParameters) {
+        self.ax += fx.max(-parameters.force_max).min(parameters.force_max) * dt;
+        self.ay += fy.max(-parameters.force_max).min(parameters.force_max) * dt;
     }
 
-    fn update(&mut self, dt: f32) {
-        self.vx = (self.vx + self.ax * dt * NODE_SPEED) * DAMPING_FACTOR;
-        self.vy = (self.vy + self.ay * dt * NODE_SPEED) * DAMPING_FACTOR;
+    fn update(&mut self, dt: f32, parameters: &SimulationParameters) {
+        self.vx = (self.vx + self.ax * dt * parameters.node_speed) * parameters.damping_factor;
+        self.vy = (self.vy + self.ay * dt * parameters.node_speed) * parameters.damping_factor;
         self.data.x += self.vx * dt;
         self.data.y += self.vy * dt;
         self.ax = 0.0;
@@ -305,7 +322,7 @@ impl<UserNodeData> Node<UserNodeData> {
     }
 }
 
-fn attract_nodes<D>(n1: &Node<D>, n2: &Node<D>) -> (f32, f32) {
+fn attract_nodes<D>(n1: &Node<D>, n2: &Node<D>, parameters: &SimulationParameters) -> (f32, f32) {
     let mut dx = n2.data.x - n1.data.x;
     let mut dy = n2.data.y - n1.data.y;
 
@@ -318,11 +335,11 @@ fn attract_nodes<D>(n1: &Node<D>, n2: &Node<D>) -> (f32, f32) {
     dx /= distance;
     dy /= distance;
 
-    let strength = 1.0 * FORCE_SPRING * distance * 0.5;
+    let strength = 1.0 * parameters.force_spring * distance * 0.5;
     (dx * strength, dy * strength)
 }
 
-fn repel_nodes<D>(n1: &Node<D>, n2: &Node<D>) -> (f32, f32) {
+fn repel_nodes<D>(n1: &Node<D>, n2: &Node<D>, parameters: &SimulationParameters) -> (f32, f32) {
     let mut dx = n2.data.x - n1.data.x;
     let mut dy = n2.data.y - n1.data.y;
 
@@ -335,7 +352,8 @@ fn repel_nodes<D>(n1: &Node<D>, n2: &Node<D>) -> (f32, f32) {
     dx /= distance;
     dy /= distance;
 
-    let strength = -FORCE_CHARGE * ((n1.data.mass * n2.data.mass) / (distance * distance));
+    let strength =
+        -parameters.force_charge * ((n1.data.mass * n2.data.mass) / (distance * distance));
     (dx * strength, dy * strength)
 }
 
@@ -345,7 +363,7 @@ mod test {
 
     #[test]
     fn test_default() {
-        let mut graph = <ForceGraph>::new();
+        let mut graph = <ForceGraph>::new(Default::default());
         let n1_idx = graph.add_node(NodeData {
             x: 0.1,
             y: 0.2,
@@ -361,7 +379,7 @@ mod test {
 
     #[test]
     fn test_user_data() {
-        let mut graph = ForceGraph::new();
+        let mut graph = ForceGraph::new(Default::default());
 
         #[derive(Default)]
         struct UserNodeData {}

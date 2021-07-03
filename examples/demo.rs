@@ -6,7 +6,7 @@ const NODE_RADIUS: f32 = 15.0;
 #[macroquad::main("Demo")]
 async fn main() {
     // create a force graph with default parameters
-    let mut graph = <ForceGraph>::new();
+    let mut graph = <ForceGraph>::new(Default::default());
 
     // create nodes
     let n1_idx = graph.add_node(NodeData {
