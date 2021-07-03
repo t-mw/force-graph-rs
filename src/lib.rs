@@ -71,6 +71,8 @@ use petgraph::{
     visit::{EdgeRef, IntoEdgeReferences},
 };
 
+use std::collections::BTreeSet;
+
 pub type DefaultNodeIdx = NodeIndex<petgraph::stable_graph::DefaultIx>;
 
 /// Parameters to control the simulation of the force graph.
@@ -151,6 +153,7 @@ where
 pub struct ForceGraph<UserNodeData = (), UserEdgeData = ()> {
     pub parameters: SimulationParameters,
     graph: StableUnGraph<Node<UserNodeData>, EdgeData<UserEdgeData>>,
+    node_indices: BTreeSet<DefaultNodeIdx>,
 }
 
 impl<UserNodeData, UserEdgeData> ForceGraph<UserNodeData, UserEdgeData> {
@@ -165,6 +168,7 @@ impl<UserNodeData, UserEdgeData> ForceGraph<UserNodeData, UserEdgeData> {
         ForceGraph {
             parameters,
             graph: StableUnGraph::default(),
+            node_indices: Default::default(),
         }
     }
 
@@ -184,12 +188,14 @@ impl<UserNodeData, UserEdgeData> ForceGraph<UserNodeData, UserEdgeData> {
             ay: 0.0,
         });
         self.graph[idx].index = idx;
+        self.node_indices.insert(idx);
         idx
     }
 
     /// Removes a node by index.
     pub fn remove_node(&mut self, idx: DefaultNodeIdx) {
         self.graph.remove_node(idx);
+        self.node_indices.remove(&idx);
     }
 
     /// Adds or updates an edge connecting two nodes by index.
@@ -205,6 +211,7 @@ impl<UserNodeData, UserEdgeData> ForceGraph<UserNodeData, UserEdgeData> {
     /// Removes all nodes from the force graph.
     pub fn clear(&mut self) {
         self.graph.clear();
+        self.node_indices.clear();
     }
 
     /// Applies the next step of the force graph simulation.
@@ -216,38 +223,26 @@ impl<UserNodeData, UserEdgeData> ForceGraph<UserNodeData, UserEdgeData> {
             return;
         }
 
-        let first_node_idx = self
-            .graph
-            .node_indices()
-            .next()
-            .expect("first node missing");
-
-        let mut bfs = petgraph::visit::Bfs::new(&self.graph, first_node_idx);
-
-        while let Some(n1) = bfs.next(&self.graph) {
-            let mut edges = self.graph.neighbors(n1).detach();
-            while let Some(n2) = edges.next_node(&self.graph) {
-                let f = attract_nodes(&self.graph[n1], &self.graph[n2], &self.parameters);
-                self.graph[n1].apply_force(f.0, f.1, dt, &self.parameters);
+        for n1_idx in &self.node_indices {
+            let mut edges = self.graph.neighbors(*n1_idx).detach();
+            while let Some(n2_idx) = edges.next_node(&self.graph) {
+                let f = attract_nodes(&self.graph[*n1_idx], &self.graph[n2_idx], &self.parameters);
+                self.graph[*n1_idx].apply_force(f.0, f.1, dt, &self.parameters);
             }
-        }
 
-        let mut bfs1 = petgraph::visit::Bfs::new(&self.graph, first_node_idx);
-
-        while let Some(n1) = bfs1.next(&self.graph) {
-            if self.graph[n1].data.is_anchor {
+            if self.graph[*n1_idx].data.is_anchor {
                 continue;
             }
 
-            let mut bfs2 = petgraph::visit::Bfs::new(&self.graph, n1);
-            bfs2.next(&self.graph);
-
-            while let Some(n2) = bfs2.next(&self.graph) {
-                let f = repel_nodes(&self.graph[n1], &self.graph[n2], &self.parameters);
-                self.graph[n1].apply_force(f.0, f.1, dt, &self.parameters);
+            for n2_idx in &self.node_indices {
+                if n1_idx == n2_idx {
+                    continue;
+                }
+                let f = repel_nodes(&self.graph[*n1_idx], &self.graph[*n2_idx], &self.parameters);
+                self.graph[*n1_idx].apply_force(f.0, f.1, dt, &self.parameters);
             }
 
-            self.graph[n1].update(dt, &self.parameters);
+            self.graph[*n1_idx].update(dt, &self.parameters);
         }
     }
 
