@@ -8,4 +8,7 @@ license = "MIT"
 edition = "2018"
 
 [dependencies]
-petgraph = "0.5"
+petgraph = "0.5.1"
+
+[dev-dependencies]
+macroquad = "0.3"

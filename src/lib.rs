@@ -1,3 +1,71 @@
+//! A Rust implementation of the force-directed graph algorithm from [Graphoon](https://github.com/rm-code/Graphoon/).
+//!
+//! # Example
+//!
+//! ```
+//! use force_graph::{ForceGraph, Node, NodeData};
+//!
+//! // create a force graph with default parameters
+//! let mut graph = <ForceGraph>::new();
+//!
+//! // create nodes
+//! let n1_idx = graph.add_node(NodeData {
+//!     x: 250.0,
+//!     y: 250.0,
+//!     ..Default::default()
+//! });
+//! let n2_idx = graph.add_node(NodeData {
+//!     x: 750.0,
+//!     y: 250.0,
+//!     ..Default::default()
+//! });
+//! let n3_idx = graph.add_node(NodeData {
+//!     x: 250.0,
+//!     y: 750.0,
+//!     ..Default::default()
+//! });
+//! let n4_idx = graph.add_node(NodeData {
+//!     x: 750.0,
+//!     y: 750.0,
+//!     ..Default::default()
+//! });
+//! let n5_idx = graph.add_node(NodeData {
+//!     x: 500.0,
+//!     y: 500.0,
+//!     is_anchor: true,
+//!     ..Default::default()
+//! });
+//!
+//! // set up links between nodes
+//! graph.add_edge(n1_idx, n5_idx, Default::default());
+//! graph.add_edge(n2_idx, n5_idx, Default::default());
+//! graph.add_edge(n3_idx, n5_idx, Default::default());
+//! graph.add_edge(n4_idx, n5_idx, Default::default());
+//!
+//! // --- your event loop would start here ---
+//!
+//! // draw edges with your own drawing function
+//! fn draw_edge(x1: f32, y1: f32, x2: f32, y2: f32) {}
+//!
+//! graph.visit_edges(|node1, node2, _edge| {
+//!     draw_edge(node1.x(), node1.y(), node2.x(), node2.y());
+//! });
+//!
+//! // draw nodes with your own drawing function
+//! fn draw_node(x: f32, y: f32) {}
+//!
+//! graph.visit_nodes(|node| {
+//!     draw_node(node.x(), node.y());
+//! });
+//!
+//! // calculate dt with your own timing function
+//! let dt = 0.1;
+//! graph.update(dt);
+//!
+//! // --- your event loop would repeat here ---
+//!
+//! ```
+
 use petgraph::{
     stable_graph::{NodeIndex, StableUnGraph},
     visit::{EdgeRef, IntoEdgeReferences},
@@ -12,99 +80,120 @@ const FORCE_MAX: f32 = 280.0;
 const NODE_SPEED: f32 = 7000.0;
 const DAMPING_FACTOR: f32 = 0.95;
 
-pub struct Node<NodeData> {
+/// Stores data associated with a node that can be modified by the user.
+pub struct NodeData<UserNodeData = ()> {
+    /// The horizontal position of the node.
     pub x: f32,
+    /// The vertical position of the node.
     pub y: f32,
-    vx: f32,
-    vy: f32,
-    ax: f32,
-    ay: f32,
-    mass: f32,
-    is_anchor: bool,
-    pub data: NodeData,
+    /// The mass of the node.
+    ///
+    /// Increasing the mass of a node increases the force with which it repels other nearby nodes.
+    pub mass: f32,
+    /// Whether the node is fixed to its current position.
+    pub is_anchor: bool,
+    /// Arbitrary user data.
+    ///
+    /// Defaults to `()` if not specified.
+    pub user_data: UserNodeData,
 }
 
-impl<NodeData> Node<NodeData> {
-    fn apply_force(&mut self, fx: f32, fy: f32, dt: f32) {
-        self.ax += fx.max(-FORCE_MAX).min(FORCE_MAX) * dt;
-        self.ay += fy.max(-FORCE_MAX).min(FORCE_MAX) * dt;
-    }
-
-    fn update(&mut self, dt: f32) {
-        self.vx = (self.vx + self.ax * dt * NODE_SPEED) * DAMPING_FACTOR;
-        self.vy = (self.vy + self.ay * dt * NODE_SPEED) * DAMPING_FACTOR;
-        self.x += self.vx * dt;
-        self.y += self.vy * dt;
-        self.ax = 0.0;
-        self.ay = 0.0;
-    }
-}
-
-/// Stores data associated with an edge. If you don't need to associate data with edge
-/// links construct the edge using `Default::default()`.
-pub struct Edge<EdgeData> {
-    pub data: EdgeData,
-}
-
-impl Default for Edge<()> {
+impl<UserNodeData> Default for NodeData<UserNodeData>
+where
+    UserNodeData: Default,
+{
     fn default() -> Self {
-        Edge { data: () }
+        NodeData {
+            x: 0.0,
+            y: 0.0,
+            mass: 10.0,
+            is_anchor: false,
+            user_data: Default::default(),
+        }
     }
 }
 
-pub struct ForceGraph<NodeData, EdgeData> {
-    graph: StableUnGraph<Node<NodeData>, Edge<EdgeData>>,
+/// Stores data associated with an edge that can be modified by the user.
+pub struct EdgeData<UserEdgeData = ()> {
+    /// Arbitrary user data.
+    ///
+    /// Defaults to `()` if not specified.
+    pub user_data: UserEdgeData,
 }
 
-impl<NodeData, EdgeData> ForceGraph<NodeData, EdgeData> {
+impl<UserEdgeData> Default for EdgeData<UserEdgeData>
+where
+    UserEdgeData: Default,
+{
+    fn default() -> Self {
+        EdgeData {
+            user_data: Default::default(),
+        }
+    }
+}
+
+/// The main force graph structure.
+pub struct ForceGraph<UserNodeData = (), UserEdgeData = ()> {
+    graph: StableUnGraph<Node<UserNodeData>, EdgeData<UserEdgeData>>,
+}
+
+impl<UserNodeData, UserEdgeData> ForceGraph<UserNodeData, UserEdgeData> {
+    /// Constructs a new force graph.
+    ///
+    /// Use the following syntax to create a graph with default parameters:
+    /// ```
+    /// use force_graph::ForceGraph;
+    /// let graph = <ForceGraph>::new();
+    /// ```
     pub fn new() -> Self {
         ForceGraph {
             graph: StableUnGraph::default(),
         }
     }
 
-    pub fn get_graph(&self) -> &StableUnGraph<Node<NodeData>, Edge<EdgeData>> {
+    /// Provides access to the raw graph structure if required.
+    pub fn get_graph(&self) -> &StableUnGraph<Node<UserNodeData>, EdgeData<UserEdgeData>> {
         &self.graph
     }
 
-    pub fn add_node(
-        &mut self,
-        x: f32,
-        y: f32,
-        data: NodeData,
-        mass: f32,
-        is_anchor: bool,
-    ) -> DefaultNodeIdx {
-        self.graph.add_node(Node {
-            x,
-            y,
+    /// Adds a new node and returns an index that can be used to reference the node.
+    pub fn add_node(&mut self, node_data: NodeData<UserNodeData>) -> DefaultNodeIdx {
+        let idx = self.graph.add_node(Node {
+            data: node_data,
+            index: Default::default(),
             vx: 0.0,
             vy: 0.0,
             ax: 0.0,
             ay: 0.0,
-            mass,
-            is_anchor,
-            data,
-        })
+        });
+        self.graph[idx].index = idx;
+        idx
     }
 
+    /// Removes a node by index.
     pub fn remove_node(&mut self, idx: DefaultNodeIdx) {
         self.graph.remove_node(idx);
     }
 
+    /// Adds or updates an edge connecting two nodes by index.
     pub fn add_edge(
         &mut self,
         n1_idx: DefaultNodeIdx,
         n2_idx: DefaultNodeIdx,
-        edge: Edge<EdgeData>,
+        edge: EdgeData<UserEdgeData>,
     ) {
         self.graph.update_edge(n1_idx, n2_idx, edge);
     }
 
+    /// Removes all nodes from the force graph.
     pub fn clear(&mut self) {
         self.graph.clear();
     }
 
+    /// Applies the next step of the force graph simulation.
+    ///
+    /// The number of seconds that have elapsed since the previous update must be calculated and
+    /// provided by the user as `dt`.
     pub fn update(&mut self, dt: f32) {
         if self.graph.node_count() == 0 {
             return;
@@ -129,7 +218,7 @@ impl<NodeData, EdgeData> ForceGraph<NodeData, EdgeData> {
         let mut bfs1 = petgraph::visit::Bfs::new(&self.graph, first_node_idx);
 
         while let Some(n1) = bfs1.next(&self.graph) {
-            if self.graph[n1].is_anchor {
+            if self.graph[n1].data.is_anchor {
                 continue;
             }
 
@@ -145,28 +234,80 @@ impl<NodeData, EdgeData> ForceGraph<NodeData, EdgeData> {
         }
     }
 
-    pub fn visit_nodes<F: FnMut(&Node<NodeData>)>(&self, mut cb: F) {
+    /// Processes each node with a user-defined callback `cb`.
+    pub fn visit_nodes<F: FnMut(&Node<UserNodeData>)>(&self, mut cb: F) {
         for n_idx in self.graph.node_indices() {
             cb(&self.graph[n_idx]);
         }
     }
 
-    pub fn visit_edges<F: FnMut(&Node<NodeData>, &Node<NodeData>, &Edge<EdgeData>)>(
+    /// Mutates each node with a user-defined callback `cb`.
+    pub fn visit_nodes_mut<F: FnMut(&mut Node<UserNodeData>)>(&mut self, mut cb: F) {
+        for node in self.graph.node_weights_mut() {
+            cb(node);
+        }
+    }
+
+    /// Processes each edge and its associated nodes with a user-defined callback `cb`.
+    pub fn visit_edges<
+        F: FnMut(&Node<UserNodeData>, &Node<UserNodeData>, &EdgeData<UserEdgeData>),
+    >(
         &self,
         mut cb: F,
     ) {
         for edge_ref in self.graph.edge_references() {
             let source = &self.graph[edge_ref.source()];
             let target = &self.graph[edge_ref.target()];
-            let weight = edge_ref.weight();
-            cb(source, target, weight);
+            let edge_data = edge_ref.weight();
+            cb(source, target, edge_data);
         }
     }
 }
 
+/// Stores the [NodeData] provided by the user and the index that references the node in the [ForceGraph].
+/// Can not be constructed by the user.
+pub struct Node<UserNodeData = ()> {
+    pub data: NodeData<UserNodeData>,
+    index: DefaultNodeIdx,
+    vx: f32,
+    vy: f32,
+    ax: f32,
+    ay: f32,
+}
+
+impl<UserNodeData> Node<UserNodeData> {
+    /// The horizontal position of the node.
+    pub fn x(&self) -> f32 {
+        self.data.x
+    }
+
+    /// The vertical position of the node.
+    pub fn y(&self) -> f32 {
+        self.data.y
+    }
+
+    pub fn index(&self) -> DefaultNodeIdx {
+        self.index
+    }
+
+    fn apply_force(&mut self, fx: f32, fy: f32, dt: f32) {
+        self.ax += fx.max(-FORCE_MAX).min(FORCE_MAX) * dt;
+        self.ay += fy.max(-FORCE_MAX).min(FORCE_MAX) * dt;
+    }
+
+    fn update(&mut self, dt: f32) {
+        self.vx = (self.vx + self.ax * dt * NODE_SPEED) * DAMPING_FACTOR;
+        self.vy = (self.vy + self.ay * dt * NODE_SPEED) * DAMPING_FACTOR;
+        self.data.x += self.vx * dt;
+        self.data.y += self.vy * dt;
+        self.ax = 0.0;
+        self.ay = 0.0;
+    }
+}
+
 fn attract_nodes<D>(n1: &Node<D>, n2: &Node<D>) -> (f32, f32) {
-    let mut dx = n2.x - n1.x;
-    let mut dy = n2.y - n1.y;
+    let mut dx = n2.data.x - n1.data.x;
+    let mut dy = n2.data.y - n1.data.y;
 
     let distance = if dx == 0.0 && dy == 0.0 {
         1.0
@@ -182,8 +323,8 @@ fn attract_nodes<D>(n1: &Node<D>, n2: &Node<D>) -> (f32, f32) {
 }
 
 fn repel_nodes<D>(n1: &Node<D>, n2: &Node<D>) -> (f32, f32) {
-    let mut dx = n2.x - n1.x;
-    let mut dy = n2.y - n1.y;
+    let mut dx = n2.data.x - n1.data.x;
+    let mut dy = n2.data.y - n1.data.y;
 
     let distance = if dx == 0.0 && dy == 0.0 {
         1.0
@@ -194,7 +335,7 @@ fn repel_nodes<D>(n1: &Node<D>, n2: &Node<D>) -> (f32, f32) {
     dx /= distance;
     dy /= distance;
 
-    let strength = -FORCE_CHARGE * ((n1.mass * n2.mass) / (distance * distance));
+    let strength = -FORCE_CHARGE * ((n1.data.mass * n2.data.mass) / (distance * distance));
     (dx * strength, dy * strength)
 }
 
@@ -204,9 +345,48 @@ mod test {
 
     #[test]
     fn test_default() {
-        let mut graph = ForceGraph::new();
-        let n1_idx = graph.add_node(0.1, 0.2, (), 1.0, false);
-        let n2_idx = graph.add_node(0.3, 0.4, (), 1.0, false);
+        let mut graph = <ForceGraph>::new();
+        let n1_idx = graph.add_node(NodeData {
+            x: 0.1,
+            y: 0.2,
+            ..Default::default()
+        });
+        let n2_idx = graph.add_node(NodeData {
+            x: 0.3,
+            y: 0.4,
+            ..Default::default()
+        });
         graph.add_edge(n1_idx, n2_idx, Default::default());
+    }
+
+    #[test]
+    fn test_user_data() {
+        let mut graph = ForceGraph::new();
+
+        #[derive(Default)]
+        struct UserNodeData {}
+        #[derive(Default)]
+        struct UserEdgeData {}
+
+        let n1_idx = graph.add_node(NodeData {
+            x: 0.1,
+            y: 0.2,
+            user_data: UserNodeData {},
+            ..Default::default()
+        });
+        let n2_idx = graph.add_node(NodeData {
+            x: 0.3,
+            y: 0.4,
+            user_data: UserNodeData {},
+            ..Default::default()
+        });
+
+        graph.add_edge(
+            n1_idx,
+            n2_idx,
+            EdgeData {
+                user_data: UserEdgeData {},
+            },
+        );
     }
 }
