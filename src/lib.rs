@@ -223,26 +223,29 @@ impl<UserNodeData, UserEdgeData> ForceGraph<UserNodeData, UserEdgeData> {
             return;
         }
 
-        for n1_idx in &self.node_indices {
+        for (n1_idx_i, n1_idx) in self.node_indices.iter().enumerate() {
             let mut edges = self.graph.neighbors(*n1_idx).detach();
             while let Some(n2_idx) = edges.next_node(&self.graph) {
-                let f = attract_nodes(&self.graph[*n1_idx], &self.graph[n2_idx], &self.parameters);
-                self.graph[*n1_idx].apply_force(f.0, f.1, dt, &self.parameters);
+                let (n1, n2) = self.graph.index_twice_mut(*n1_idx, n2_idx);
+                let f = attract_nodes(n1, n2, &self.parameters);
+                n1.apply_force(f.0, f.1, dt, &self.parameters);
             }
 
-            if self.graph[*n1_idx].data.is_anchor {
-                continue;
-            }
-
-            for n2_idx in &self.node_indices {
-                if n1_idx == n2_idx {
-                    continue;
+            for n2_idx in self.node_indices.iter().skip(n1_idx_i + 1) {
+                let (n1, n2) = self.graph.index_twice_mut(*n1_idx, *n2_idx);
+                let f = repel_nodes(n1, n2, &self.parameters);
+                if !n1.data.is_anchor {
+                    n1.apply_force(f.0, f.1, dt, &self.parameters);
                 }
-                let f = repel_nodes(&self.graph[*n1_idx], &self.graph[*n2_idx], &self.parameters);
-                self.graph[*n1_idx].apply_force(f.0, f.1, dt, &self.parameters);
+                if !n2.data.is_anchor {
+                    n2.apply_force(-f.0, -f.1, dt, &self.parameters);
+                }
             }
 
-            self.graph[*n1_idx].update(dt, &self.parameters);
+            let n1 = &mut self.graph[*n1_idx];
+            if !n1.data.is_anchor {
+                n1.update(dt, &self.parameters);
+            }
         }
     }
 
